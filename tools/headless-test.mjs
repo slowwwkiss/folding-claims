@@ -1,9 +1,15 @@
 // Headless end-to-end check of the FoldClaim app (docs/) in Chromium.
 // Serves docs/ on http://127.0.0.1:8123 first (python3 -m http.server),
 // oracle must be running on http://localhost:8787.
-// Flow: load -> lookup donor "satoshi" -> request claim -> submit claim
+// Flow: load -> lookup donor -> request claim -> submit claim
 // on-chain -> verify via /api/tx. Screenshots + video into demo/.
 // Run: node tools/headless-test.mjs
+// Donor: FOLDCLAIM_DONOR env (default "satoshi"). NOTE (16 Nov 2026):
+// satoshi has NOTHING new to claim (score 1,224,243 already claimed ->
+// oracle 409 "Nothing new to claim", handled gracefully by the UI) —
+// use FOLDCLAIM_DONOR=Anonymous for a full on-chain run (delta ~1,052
+// FOLD unclaimed as of 16 Nov ~01:00 WIB; costs one 2,000-sat escrow).
+const DONOR = process.env.FOLDCLAIM_DONOR || 'satoshi';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 
@@ -40,8 +46,8 @@ console.log('claim addr:', await txt('#claim-addr'));
 console.log('claim tokenaddr:', await txt('#claim-tokenaddr'));
 await shot('01-home.png');
 
-console.log('== step 1: lookup satoshi ==');
-await page.fill('#in-username', 'satoshi');
+console.log('== step 1: lookup ' + DONOR + ' ==');
+await page.fill('#in-username', DONOR);
 await page.click('#btn-lookup');
 await page.waitForFunction(
   () => document.querySelector('#fah-result')?.textContent.includes('Reward for this score'),

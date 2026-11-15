@@ -64,7 +64,21 @@ async function rebuildRegistryFromChain() {
     const txs = Array.isArray(history) ? history : [];
     for (const tx of txs) {
       for (const out of tx.outputs || []) {
-        const memo = out?.opReturn || out?.memo || '';
+        // The REST server reports OP_RETURN outputs in the `address` field as
+        // "OP_RETURN: <hex>" (script hex: 6a <pushlen> <utf8 memo>), NOT in
+        // `opReturn`/`memo`. The old code only read those two fields, so the
+        // rebuild silently found 0 claims after every restart (found 15 Nov
+        // 2026 ~23:59 WIB; history DOES contain both funding memos).
+        let memo = out?.opReturn || out?.memo || '';
+        if (!memo && typeof out?.address === 'string' && out.address.startsWith('OP_RETURN: ')) {
+          try {
+            const scriptHex = out.address.slice('OP_RETURN: '.length).trim();
+            const script = Buffer.from(scriptHex, 'hex');
+            // script = 0x6a <pushlen> <memo bytes>; memo is plain UTF-8.
+            const pushLen = script[1];
+            memo = script.subarray(2, 2 + pushLen).toString('utf8');
+          } catch { memo = ''; }
+        }
         const m = typeof memo === 'string' && memo.match(/^FoldClaim:([^:]+):(\d+):(\d+)$/);
         if (!m) continue;
         const [, username, score, claimIndex] = m;
@@ -167,10 +181,6 @@ const server = http.createServer(async (req, res) => {
       }
       const fah = await fahUser(username);
       const score = BigInt(Math.floor(Number(fah.score)));
-      const amount = computeFoldAmount(score);
-      if (amount <= 0n) {
-        return sendJson(res, 400, { error: `Score ${score} is too low to earn any FOLD (needs >= ${config.pointsPerFold} points).` });
-      }
       const key = username.toLowerCase();
       const entry = registry[key] || { lastScore: '0', claims: [] };
       if (BigInt(entry.lastScore) >= score) {
@@ -178,6 +188,17 @@ const server = http.createServer(async (req, res) => {
           error: `Nothing new to claim: score ${score} was already claimed (last claimed score ${entry.lastScore}). Fold more, then come back.`,
           lastScore: entry.lastScore,
         });
+      }
+      // Amount is earned ONLY on NEW points since the last claim (delta), not
+      // on the lifetime total. The old code attested computeFoldAmount(score),
+      // so a donor who folded a few points more after a capped 50,000-FOLD
+      // claim could re-claim the full 50,000 cap again and again (found
+      // 15 Nov 2026 ~23:59 WIB: Anonymous grew +99,332,669 pts after the
+      // first claim, worth only 993 FOLD, but would have re-attested 50,000).
+      const newPoints = score - BigInt(entry.lastScore);
+      const amount = computeFoldAmount(newPoints);
+      if (amount <= 0n) {
+        return sendJson(res, 400, { error: `Only ${newPoints} new points since the last claim — too few to earn any FOLD (needs >= ${config.pointsPerFold} new points).` });
       }
       const claimIndex = entry.claims.length;
       const claimantPk = hexToBytes(claimantPkHex);

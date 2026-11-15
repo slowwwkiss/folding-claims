@@ -1,0 +1,39 @@
+{
+  "contractName": "FoldClaim",
+  "constructorInputs": [
+    { "name": "oraclePk", "type": "pubkey" },
+    { "name": "claimantPk", "type": "pubkey" },
+    { "name": "nonce", "type": "bytes" }
+  ],
+  "abi": [
+    {
+      "name": "claim",
+      "inputs": [
+        { "name": "oracleSig", "type": "datasig" },
+        { "name": "claimantSig", "type": "sig" }
+      ]
+    }
+  ],
+  "bytecode": "OP_2SWAP OP_ROT OP_CHECKDATASIGVERIFY OP_TUCK OP_CHECKSIGVERIFY 76a914 OP_SWAP OP_HASH160 OP_CAT 88ac OP_CAT OP_0 OP_OUTPUTBYTECODE OP_EQUAL",
+  "source": "// FoldClaim — pull-based Folding@home reward claims (BCH Blaze 2026, FoldingCash bounty).\n//\n// One escrow UTXO per claim. The oracle (a trusted off-chain service) attests\n// that a Folding@home username earned `amount` demo-FOLD for a score snapshot\n// taken from the official Folding@home stats API. The attestation is a\n// Schnorr signature over `nonce`, where\n//   nonce = sha256(claimantPk || amount || utf8(fahUsername) || fahScore || claimIndex)\n// The contract enforces, on-chain:\n//   1. the oracle's signature over `nonce` is valid  (checkDataSig)\n//   2. the claimant's own signature is valid        (checkSig — the claimant\n//      signs the claim transaction, so only they can move the escrow)\n//   3. the payout can only leave to the claimant's P2PKH address (covenant)\n// Double-claim is impossible on-chain: a UTXO can be spent exactly once.\n// The oracle ALSO refuses to attest the same score snapshot twice (registry),\n// so one score snapshot can only ever fund one escrow.\n//\n// TRUST MODEL (honest): the oracle is the single trusted component — it is\n// the only party that can read the Folding@home API and bind a username to a\n// score. The contract itself is trustless: the oracle CANNOT steal escrowed\n// funds (it cannot satisfy checkSig) and CANNOT redirect a payout (the\n// covenant pins the output to the claimant). What the oracle CAN do is lie\n// about a score or refuse to attest. That is the documented residual trust,\n// exactly as FoldingCash's own whitepaper states (sec. 5.1.1): any on-chain\n// distribution still needs an oracle for Folding@home points.\n//\n// NOTE: the attested `amount` lives inside `nonce` (signed by the oracle) and\n// in the escrow UTXO funded by the oracle; the contract does not re-check the\n// token amount because CashScript 0.14 has no token-amount introspection on\n// outputs. The claimant can only ever pay themself, so a wrong amount can\n// only come from the oracle — which is already the trusted party.\ncontract FoldClaim(pubkey oraclePk, pubkey claimantPk, bytes nonce) {\n    function claim(datasig oracleSig, sig claimantSig) {\n        // 1. Oracle attestation over this exact claim.\n        require(checkDataSig(oracleSig, nonce, oraclePk));\n        // 2. Claimant proves ownership of the payout key.\n        require(checkSig(claimantSig, claimantPk));\n        // 3. Payout must go to the claimant's P2PKH address, nowhere else.\n        bytes p2pkhLock = 0x76a914 + hash160(claimantPk) + 0x88ac;\n        require(tx.outputs[0].lockingBytecode == p2pkhLock);\n    }\n}\n",
+  "fingerprint": "4db8f3d9e59b4b9c3beb5cfd2ad6c13513aea7c940b59624482c9e55a506e50b",
+  "debug": {
+    "bytecode": "727bbb7dad0376a9147ca97e0288ac7e00cd87",
+    "sourceMap": "34:29:34:45;:47::55;:8::58:1;36:25:36:48:0;:8::51:1;38:26:38:34:0;:45::55;:37::56:1;:26;:59::65:0;:26:::1;39:27:39:28:0;:16::45:1;:8::60",
+    "logs": [],
+    "requires": [
+      { "ip": 5, "line": 34 },
+      { "ip": 7, "line": 36 },
+      { "ip": 17, "line": 39 }
+    ]
+  },
+  "compiler": {
+    "name": "cashc",
+    "version": "0.14.0",
+    "options": {
+      "enforceFunctionParameterTypes": true,
+      "enforceLocktimeGuard": true
+    }
+  },
+  "updatedAt": "2026-11-15T11:10:50.370Z"
+}

@@ -1,0 +1,29 @@
+{
+  "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "cashc": "^0.14.0",
+    "cashscript": "^0.14.0",
+    "mainnet-js": "^3.0.1",
+    "@bitauth/libauth": "^3.1.0-next.8"
+  },
+  "description": "FoldClaim — pull-based Folding@home reward claims on Bitcoin Cash (CashTokens + CashScript oracle contract). BCH Blaze 2026, FoldingCash bounty.",
+  "devDependencies": {
+    "vite": "^8.3.8"
+  },
+  "name": "foldclaim",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "build:bun": "bun build src/main.js --outdir docs/assets --target browser --minify",
+    "dev": "vite",
+    "oracle": "node oracle/server.mjs",
+    "preview": "vite preview --port 4173",
+    "setup": "node oracle/setup.mjs",
+    "test:contract": "node tools/test-contract-local.mjs",
+    "test:e2e": "node tools/e2e-chipnet.mjs",
+    "test:headless": "node tools/headless-test.mjs"
+  },
+  "type": "module",
+  "version": "1.0.0"
+}

@@ -1,0 +1,14 @@
+# Secrets — NEVER commit these.
+oracle/.keys.json
+oracle/registry.json
+*.keys.json
+**/.keys.json
+.DS_Store
+
+# Build output (committed for GitHub Pages /docs source — see README)
+# docs/ is intentionally NOT ignored: it is the built app served by Pages.
+
+# Local tooling / scratch
+tools/*.local.json
+/tmp/
+node_modules/

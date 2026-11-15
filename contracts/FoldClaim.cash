@@ -1,0 +1,41 @@
+// FoldClaim — pull-based Folding@home reward claims (BCH Blaze 2026, FoldingCash bounty).
+//
+// One escrow UTXO per claim. The oracle (a trusted off-chain service) attests
+// that a Folding@home username earned `amount` demo-FOLD for a score snapshot
+// taken from the official Folding@home stats API. The attestation is a
+// Schnorr signature over `nonce`, where
+//   nonce = sha256(claimantPk || amount || utf8(fahUsername) || fahScore || claimIndex)
+// The contract enforces, on-chain:
+//   1. the oracle's signature over `nonce` is valid  (checkDataSig)
+//   2. the claimant's own signature is valid        (checkSig — the claimant
+//      signs the claim transaction, so only they can move the escrow)
+//   3. the payout can only leave to the claimant's P2PKH address (covenant)
+// Double-claim is impossible on-chain: a UTXO can be spent exactly once.
+// The oracle ALSO refuses to attest the same score snapshot twice (registry),
+// so one score snapshot can only ever fund one escrow.
+//
+// TRUST MODEL (honest): the oracle is the single trusted component — it is
+// the only party that can read the Folding@home API and bind a username to a
+// score. The contract itself is trustless: the oracle CANNOT steal escrowed
+// funds (it cannot satisfy checkSig) and CANNOT redirect a payout (the
+// covenant pins the output to the claimant). What the oracle CAN do is lie
+// about a score or refuse to attest. That is the documented residual trust,
+// exactly as FoldingCash's own whitepaper states (sec. 5.1.1): any on-chain
+// distribution still needs an oracle for Folding@home points.
+//
+// NOTE: the attested `amount` lives inside `nonce` (signed by the oracle) and
+// in the escrow UTXO funded by the oracle; the contract does not re-check the
+// token amount because CashScript 0.14 has no token-amount introspection on
+// outputs. The claimant can only ever pay themself, so a wrong amount can
+// only come from the oracle — which is already the trusted party.
+contract FoldClaim(pubkey oraclePk, pubkey claimantPk, bytes nonce) {
+    function claim(datasig oracleSig, sig claimantSig) {
+        // 1. Oracle attestation over this exact claim.
+        require(checkDataSig(oracleSig, nonce, oraclePk));
+        // 2. Claimant proves ownership of the payout key.
+        require(checkSig(claimantSig, claimantPk));
+        // 3. Payout must go to the claimant's P2PKH address, nowhere else.
+        bytes p2pkhLock = 0x76a914 + hash160(claimantPk) + 0x88ac;
+        require(tx.outputs[0].lockingBytecode == p2pkhLock);
+    }
+}

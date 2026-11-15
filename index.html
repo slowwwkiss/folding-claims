@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FoldClaim — Pull-based Folding@home reward claims on Bitcoin Cash</title>
+  <meta name="description" content="Claim demo FOLD CashTokens for your Folding@home contributions. A CashScript oracle contract verifies the claim on-chain. BCH Blaze 2026, FoldingCash bounty.">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧬</text></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-in">
+      <div class="brand">🧬 <strong>FoldClaim</strong> <span class="tag">BCH Blaze 2026 · FoldingCash bounty</span></div>
+      <div class="net"><span class="dot" id="oracle-dot"></span><span id="oracle-status">oracle: connecting…</span></div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>Fold proteins. Claim FOLD.</h1>
+      <p class="lead">Donate spare compute to <a href="https://foldingathome.org" target="_blank" rel="noreferrer">Folding@home</a> medical research, then pull your reward on-chain. A CashScript contract verifies an oracle attestation of your official Folding@home score — no monthly airdrop to wait for, no custodian holding your tokens.</p>
+      <p class="demo-note"><strong>Demo on chipnet (BCH testnet).</strong> Rewards are <strong>demo FOLD</strong>, a stand-in CashToken for FLDCH — no real BCH, no real FLDCH. Folding@home scores are real, read live from the official stats API.</p>
+    </section>
+
+    <section class="card" id="step1">
+      <h2>1 · Look up your Folding@home score</h2>
+      <div class="row">
+        <input id="in-username" type="text" placeholder="Folding@home username (e.g. Anonymous)" autocomplete="off" spellcheck="false">
+        <button id="btn-lookup" class="btn primary">Look up</button>
+      </div>
+      <p class="hint">Scores come from the official Folding@home stats API (<code>api.foldingathome.org</code>). It is public and needs no key. Stats update once an hour.</p>
+      <div id="fah-result" class="result hidden"></div>
+    </section>
+
+    <section class="card" id="step2">
+      <h2>2 · Your claim identity</h2>
+      <p>The claim pays to a fresh keypair generated in your browser. The oracle attests the score <em>for this key</em>, and the contract only pays this key — nobody else can take your claim.</p>
+      <div class="kv"><span>Claim address</span><code id="claim-addr">…</code></div>
+      <div class="kv"><span>Token address</span><code id="claim-tokenaddr">…</code></div>
+      <div class="kv"><span>Public key</span><code id="claim-pk" class="small">…</code></div>
+      <button id="btn-newkey" class="btn">Generate a new identity</button>
+      <span class="hint">Stored only in this browser's localStorage. Never leaves your device except as the public key in the claim request.</span>
+    </section>
+
+    <section class="card" id="step3">
+      <h2>3 · Request your claim</h2>
+      <p>The oracle checks your score, signs the claim (username, amount, score snapshot) and funds an escrow contract with your FOLD. This is the only step that trusts the oracle — and it cannot steal or redirect anything (see the trust model below).</p>
+      <button id="btn-claim" class="btn primary" disabled>Request claim</button>
+      <div id="claim-result" class="result hidden"></div>
+    </section>
+
+    <section class="card" id="step4">
+      <h2>4 · Submit the claim on-chain</h2>
+      <p>Your browser builds the claim transaction, checks it against the real BCH virtual machine locally, and broadcasts it. The contract verifies the oracle signature + your signature + the payout address before releasing the tokens.</p>
+      <button id="btn-submit" class="btn primary" disabled>Submit claim on-chain</button>
+      <div id="submit-result" class="result hidden"></div>
+    </section>
+
+    <section class="card" id="history">
+      <h2>Claim history &amp; balance</h2>
+      <div class="kv"><span>Total FOLD claimed (this browser)</span><strong id="hist-total">0 FOLD</strong></div>
+      <div id="hist-list" class="hist-list"><p class="hint">No claims yet in this browser.</p></div>
+      <button id="btn-refresh-hist" class="btn">Refresh from oracle</button>
+    </section>
+
+    <section class="card trust" id="trust">
+      <h2>Trust model — read this before you trust it</h2>
+      <p><strong>The oracle is the single trusted component.</strong> A Bitcoin Cash contract cannot read the Folding@home API, so someone must carry the score on-chain. That someone is the oracle: it reads <code>api.foldingathome.org</code>, computes your reward, and signs the claim. This is exactly the point FoldingCash's own whitepaper (§5.1.1) makes — any on-chain distribution still needs an oracle for Folding@home points.</p>
+      <ul>
+        <li><strong>What the oracle CANNOT do:</strong> steal escrowed funds (the contract also requires <em>your</em> signature), redirect your payout (the contract pins the output to <em>your</em> address), or pay twice for one score (each escrow UTXO can be spent exactly once, and the oracle refuses to attest a score it already paid).</li>
+        <li><strong>What the oracle CAN do:</strong> lie about a score, or refuse to attest. That is the residual trust. In production the oracle would be run by FoldingCash itself (the same party that runs today's monthly distributions) — or by several independent signers with an m-of-n scheme.</li>
+        <li><strong>Username binding:</strong> Folding@home usernames have no cryptography behind them — anyone can type someone else's name. The oracle attests the <em>score</em> for a name; binding a name to a person is the same registration trust FoldingCash already uses for its distributions. A stronger binding (e.g. proving control of a Folding@home passkey) is future work, not claimed here.</li>
+        <li><strong>Demo economics:</strong> 1 FOLD per 100,000 Folding@home points, capped at 50,000 FOLD per claim. Real FLDCH distribution rates are set by FoldingCash; this rate is a demo stand-in.</li>
+        <li><strong>What is verified on-chain:</strong> oracle signature over the claim (username, amount, score, nonce), claimant signature, payout address covenant, single-spend escrow. Every funding transaction carries an <code>OP_RETURN FoldClaim:&lt;user&gt;:&lt;score&gt;:&lt;index&gt;</code> memo, so all attestations are auditable on-chain.</li>
+      </ul>
+      <p class="hint">Contract: <code>contracts/FoldClaim.cash</code> (CashScript 0.14). Oracle: <code>oracle/server.mjs</code>. FoldingCash token category (mainnet FLDCH): <code>0adb865ee9cc3038de87fba682e6cd361414edc9acff0da2fd0690d75341c640</code>.</p>
+    </section>
+
+    <section class="card" id="how">
+      <h2>How it works</h2>
+      <ol>
+        <li>You enter your Folding@home username. The app reads your score from the official stats API (proxied through the oracle — the API sends no CORS headers, so browsers cannot call it directly).</li>
+        <li>The oracle signs a claim: <code>nonce = sha256(claimantPk ‖ amount ‖ username ‖ score ‖ index)</code>, then funds a one-time escrow contract with your FOLD.</li>
+        <li>Your browser builds the claim transaction: the contract checks the oracle signature (<code>OP_CHECKDATASIG</code>), your signature, and that the tokens go to your address — then releases the FOLD to you.</li>
+        <li>Claim again only after you fold more: the oracle refuses to attest a score it already paid.</li>
+      </ol>
+      <p class="hint">Source &amp; submission draft: see the repo README. Demo token category (chipnet): <code id="cfg-category">…</code></p>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p>FoldClaim — BCH Blaze 2026, FoldingCash Reward Claims bounty (0.5 BCH). Chipnet demo only. Not affiliated with FoldingCash or Folding@home.</p>
+  </footer>
+
+  <script type="module" src="./assets/main.js"></script>
+</body>
+</html>
